@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>字幕转文本工具</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+    .header {
+      background: linear-gradient(90deg, #8b5cf6, #ec4899);
+      color: white;
+      text-align: center;
+      padding: 1.2rem;
+    }
+    .container {
+      display: flex;
+      max-width: 1400px;
+      margin: 1.5rem auto;
+      gap: 1rem;
+      padding: 0 1rem;
+      height: calc(100vh - 160px);
+    }
+    .panel {
+      flex: 1;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      position: relative;
+    }
+    .panel-title {
+      padding: 0.6rem 1rem;
+      background: #e2e8f0;
+      font-weight: 600;
+      font-size: 0.95rem;
+      z-index: 2;
+    }
+    .input-box, .output-box {
+      flex: 1;
+      padding: 1rem;
+      outline: none;
+      font-family: Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .input-box {
+      background: #f1f5f9;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .output-box {
+      background: #f0fdf4;
+      color: #166534;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    /* placeholder for contenteditable div */
+    .input-box:empty::before {
+      content: attr(placeholder);
+      color: #94a3b8;
+    }
+    .input-box:focus::before {
+      display: none;
+    }
+
+    .toolbar {
+      padding: 0.8rem 1rem;
+      background: #f8fafc;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 1rem;
+      border-top: 1px solid #e2e8f0;
+    }
+    .btn {
+      padding: 0.4rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .btn-download { background: #0ea5e9; color: white; }
+    .btn-copy { background: #10b981; color: white; }
+    .btn-clear { background: #f59e0b; color: white; }
+    .btn:hover { opacity: 0.9; }
+
+    /* 滑动开关 */
+    .switch-container {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      color: #475569;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 24px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #cbd5e1;
+      transition: .2s;
+      border-radius: 12px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #f59e0b;
+    }
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+
+    /* 拖拽高亮 */
+    .left-panel.drop-active {
+      background-color: #f1f5f9;
+      border: 2px dashed #8b5cf6;
+      border-radius: 10px;
+      box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+    }
+    .left-panel.drop-active::before {
+      content: "松开以加载文件";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(139, 92, 246, 0.9);
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 16px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* ✨ Toast 提示样式 */
+    #toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-100%);
+      background: rgba(16, 185, 129, 0.95); /* 翠绿色 */
+      color: white;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 1000;
+      opacity: 0;
+      transition: 
+        opacity 0.2s ease,
+        transform 0.2s ease;
+    }
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>字幕转文本工具</h1>
+  </div>
+
+  <div class="container">
+    <div class="panel left-panel">
+      <div class="panel-title">粘贴原始内容</div>
+      <div 
+        id="inputText" 
+        class="input-box"
+        contenteditable="true"
+        placeholder="粘贴字幕内容，或拖拽 .srt 文件到任意位置..."
+      ></div>
+    </div>
+
+    <div class="panel right-panel">
+      <div class="panel-title">处理结果</div>
+      <div id="outputText" class="output-box" contenteditable="false"></div>
+      <div class="toolbar">
+        <div class="switch-container">
+          <span>换行</span>
+          <label class="switch">
+            <input type="checkbox" id="compressToggle">
+            <span class="slider"></span>
+          </label>
+          <span>压缩</span>
+        </div>
+        <button class="btn btn-clear" onclick="clearAll()">🧹 清空</button>
+        <button class="btn btn-download" onclick="downloadText()">💾 下载</button>
+        <button class="btn btn-copy" onclick="copyResult()">📋 复制</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✨ Toast 元素 -->
+  <div id="toast">已复制到剪贴板</div>
+
+  <script>
+    const input = document.getElementById('inputText');
+    const output = document.getElementById('outputText');
+    const compressToggle = document.getElementById('compressToggle');
+    const leftPanel = document.querySelector('.left-panel');
+    const toast = document.getElementById('toast');
+
+    let originalLines = [];
+    let currentFileName = '字幕文本'; // 默认文件名
+
+    // 拖拽支持
+    ['dragover', 'dragenter'].forEach(evt => {
+      leftPanel.addEventListener(evt, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        leftPanel.classList.add('drop-active');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(evt => {
+      leftPanel.addEventListener(evt, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        leftPanel.classList.remove('drop-active');
+      });
+    });
+
+    leftPanel.addEventListener('drop', e => {
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+
+      // 只接受 .srt 文件
+      if (!file.name.toLowerCase().endsWith('.srt')) {
+        showToast('请上传 .srt 字幕文件');
+        return;
+      }
+
+      // 提取文件名（不含扩展名）
+      const fileNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
+      currentFileName = fileNameWithoutExt || '字幕文本';
+
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const rawText = ev.target.result;
+        // 安全处理：移除 HTML 标签
+        const cleanText = rawText.replace(/<[^>]+>/g, '');
+        input.innerText = cleanText;
+        processSrt();
+      };
+      reader.readAsText(file);
+    });
+
+    // 输入事件处理（防止 XSS）
+    input.addEventListener('input', () => {
+      const currentText = input.innerText;
+      const cleanText = currentText.replace(/<[^>]+>/g, '');
+      input.innerText = cleanText;
+      setTimeout(processSrt, 50);
+    });
+    input.addEventListener('paste', () => setTimeout(processSrt, 50));
+
+    function processSrt() {
+      const text = input.innerText?.trim();
+      if (!text) {
+        originalLines = [];
+        updateOutput();
+        return;
+      }
+
+      const lines = text.split('\n');
+      const result = [];
+      for (let line of lines) {
+        const t = line.trim();
+        if (t === '') continue;
+        if (/^\d+$/.test(t)) continue;
+        // 支持 SRT 和 VTT 时间格式
+        if (/\d{2}:\d{2}:\d{2}(?:\.\d{3}|,\d{3}) --> \d{2}:\d{2}:\d{2}(?:\.\d{3}|,\d{3})/.test(t)) continue;
+        result.push(t);
+      }
+      originalLines = result;
+      updateOutput();
+    }
+
+    function updateOutput() {
+      if (originalLines.length === 0) {
+        output.innerText = '';
+        return;
+      }
+
+      const isCompressed = compressToggle.checked;
+      const displayText = isCompressed 
+        ? originalLines.join(',') 
+        : originalLines.join('\n');
+
+      output.innerText = displayText;
+    }
+
+    compressToggle.addEventListener('change', updateOutput);
+
+    // ✨ 优雅 Toast 提示
+    function showToast(message = '已复制到剪贴板') {
+      toast.textContent = message;
+      toast.classList.add('show');
+
+      // 1秒后自动隐藏
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 1000);
+    }
+
+    // 复制功能（使用现代 Clipboard API + 降级）
+    async function copyResult() {
+      const text = output.innerText;
+      if (!text) {
+        showToast('无可复制内容');
+        return;
+      }
+
+      try {
+        // 优先使用现代 Clipboard API（更可靠）
+        await navigator.clipboard.writeText(text);
+        showToast('✅ 已复制到剪贴板');
+      } catch (err) {
+        // 降级：使用 document.execCommand（旧浏览器）
+        const range = document.createRange();
+        range.selectNodeContents(output);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.execCommand('copy');
+        selection.removeAllRanges();
+        showToast('✅ 已复制（兼容模式）');
+      }
+    }
+
+    function downloadText() {
+      const text = output.innerText;
+      if (!text) {
+        showToast('无内容可下载');
+        return;
+      }
+      
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // 使用当前文件名生成下载文件名（避免模板字符串）
+      a.download = currentFileName + '.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function clearAll() {
+      input.innerText = '';
+      output.innerText = '';
+      originalLines = [];
+      currentFileName = '字幕文本'; // 重置文件名为默认
+      showToast('已清空');
+    }
+  </script>
+</body>
+</html>
