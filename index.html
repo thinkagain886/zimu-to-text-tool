@@ -239,6 +239,7 @@
 
     let originalLines = [];
     let currentFileName = '字幕文本'; // 默认文件名
+    let processTimer = null;
 
     // 拖拽支持
     ['dragover', 'dragenter'].forEach(evt => {
@@ -282,14 +283,27 @@
       reader.readAsText(file);
     });
 
-    // 输入事件处理（防止 XSS）
-    input.addEventListener('input', () => {
+    function scheduleProcess() {
+      if (processTimer) clearTimeout(processTimer);
+      processTimer = setTimeout(function () {
+        processTimer = null;
+        processSrt();
+      }, 200);
+    }
+
+    // 输入事件：仅在确实去掉标签时写回，避免大段文本反复整页 innerText 触发连锁 input 卡死
+    input.addEventListener('input', function () {
       const currentText = input.innerText;
       const cleanText = currentText.replace(/<[^>]+>/g, '');
-      input.innerText = cleanText;
-      setTimeout(processSrt, 50);
+      if (cleanText !== currentText) input.innerText = cleanText;
+      scheduleProcess();
     });
-    input.addEventListener('paste', () => setTimeout(processSrt, 50));
+    input.addEventListener('paste', function () {
+      scheduleProcess();
+    });
+
+    // 分段标题：【】/[]，时间支持 : / ：，横线 - / － / – / — 等，可选时:分:秒
+    var BRACKET_TIME = /^[\u3010\[]\s*(?:\d{1,2}[:：]\d{2}(?:[:：]\d{2})?)\s*[-－–—~～]\s*(?:\d{1,2}[:：]\d{2}(?:[:：]\d{2})?)\s*[\u3011\]]$/;
 
     function processSrt() {
       const text = input.innerText?.trim();
@@ -299,7 +313,7 @@
         return;
       }
 
-      const lines = text.split('\n');
+      const lines = text.split(/\r?\n/);
       const result = [];
       for (let line of lines) {
         const t = line.trim();
@@ -307,8 +321,7 @@
         if (/^\d+$/.test(t)) continue;
         // 支持 SRT 和 VTT 时间格式
         if (/\d{2}:\d{2}:\d{2}(?:\.\d{3}|,\d{3}) --\u003e \d{2}:\d{2}:\d{2}(?:\.\d{3}|,\d{3})/.test(t)) continue;
-        // \u3010\u3011 = 【】 分段时间轴；兼容半角 []
-        if (/^[\u3010\[]\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*[\u3011\]]$/.test(t)) continue;
+        if (BRACKET_TIME.test(t)) continue;
         result.push(t);
       }
       originalLines = result;
