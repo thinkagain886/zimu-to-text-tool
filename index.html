@@ -306,7 +306,9 @@
         if (t === '') continue;
         if (/^\d+$/.test(t)) continue;
         // 支持 SRT 和 VTT 时间格式
-        if (/\d{2}:\d{2}:\d{2}(?:\.\d{3}|,\d{3}) --> \d{2}:\d{2}:\d{2}(?:\.\d{3}|,\d{3})/.test(t)) continue;
+        if (/\d{2}:\d{2}:\d{2}(?:\.\d{3}|,\d{3}) --\u003e \d{2}:\d{2}:\d{2}(?:\.\d{3}|,\d{3})/.test(t)) continue;
+        // \u3010\u3011 = 【】 分段时间轴；兼容半角 []
+        if (/^[\u3010\[]\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*[\u3011\]]$/.test(t)) continue;
         result.push(t);
       }
       originalLines = result;
